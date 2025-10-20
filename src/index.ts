@@ -28,6 +28,24 @@ const ALLOWED_API_ENDPOINTS = [
   "https://api.bitbucket.org/2.0/repositories",
 ];
 
+const logger = {
+  info: (...args: unknown[]) => {
+    // INFO level
+    // eslint-disable-next-line no-console
+    console.log("INFO |", ...args);
+  },
+  warn: (...args: unknown[]) => {
+    // WARNING level
+    // eslint-disable-next-line no-console
+    console.warn("WARNING |", ...args);
+  },
+  error: (...args: unknown[]) => {
+    // ERROR level
+    // eslint-disable-next-line no-console
+    console.error("ERROR |", ...args);
+  },
+};
+
 // Apply CORS
 app.use(
   "*",
@@ -82,7 +100,7 @@ app.post("/oauth", async (c) => {
       params.set("client_secret", c.env.GITLAB_CLIENT_SECRET);
     }
 
-    console.log("🔐 Token exchange for:", targetUrl);
+  logger.info("Token exchange for:", targetUrl);
 
     const response = await fetch(targetUrl, {
       method: "POST",
@@ -96,15 +114,15 @@ app.post("/oauth", async (c) => {
     const data = await response.json();
 
     if (!response.ok || (data as { error?: string }).error) {
-      console.error("❌ Token exchange failed:", data);
+      logger.error("Token exchange failed:", data);
     } else {
-      console.log("✅ Token exchange successful");
+      logger.info("Token exchange successful");
     }
 
     return c.json(data, response.status as ContentfulStatusCode);
   } catch (err) {
     const error = err as Error;
-    console.error("💥 Proxy error:", error);
+    logger.error("Proxy error:", error);
     return c.json(
       { error: "Proxy request failed", details: error.message },
       500
@@ -132,6 +150,7 @@ app.get("/apis", async (c) => {
   try {
     const headers: Record<string, string> = {
       Accept: "application/json",
+      "User-Agent": "GitDigest-App/1.0",
     };
 
     if (authHeader) {
@@ -143,10 +162,53 @@ app.get("/apis", async (c) => {
       headers,
     });
 
-    const data = await response.json();
+  const text = await response.text();
+  logger.info("Response (first 200 chars):", text.substring(0, 200));
+
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      logger.error("Non-JSON response");
+      return c.json(
+        {
+          error: "Invalid response type", 
+          details: text.substring(0, 500),
+          status: response.status 
+        },
+        500
+      );
+    }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseError) {
+      logger.error("JSON parse failed");
+      return c.json(
+        { 
+          error: "Failed to parse JSON", 
+          details: text.substring(0, 500) 
+        },
+        500
+      );
+    }
+
+    if (!response.ok) {
+      logger.error("API error:", data);
+      return c.json(
+        { 
+          error: "API request failed", 
+          details: data.message || JSON.stringify(data),
+          status: response.status 
+        },
+        response.status as ContentfulStatusCode
+      );
+    }
+
+    logger.info("API success");
     return c.json(data, response.status as ContentfulStatusCode);
   } catch (err) {
     const error = err as Error;
+    logger.error("Error:", error);
     return c.json(
       { error: "API request failed", details: error.message },
       500
