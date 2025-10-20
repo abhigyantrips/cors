@@ -29,10 +29,21 @@ Logs are non-intrusive and do not use emojis. Messages are prefixed by level:
 - WARNING | message
 - ERROR | message
 
-Use the helper in `src/logger.ts`:
-
 ```ts
-import { logger } from "./src/logger";
+const logger = {
+  info: (...args: unknown[]) => {
+    // INFO level
+    console.log("INFO |", ...args);
+  },
+  warn: (...args: unknown[]) => {
+    // WARNING level
+    console.warn("WARNING |", ...args);
+  },
+  error: (...args: unknown[]) => {
+    // ERROR level
+    console.error("ERROR |", ...args);
+  },
+};
 
 logger.info("Starting server");
 logger.warn("Rate limit approaching");
