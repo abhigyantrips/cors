@@ -2,7 +2,14 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 
-const app = new Hono();
+type Bindings = {
+  GITHUB_CLIENT_ID: string;
+  GITHUB_CLIENT_SECRET: string;
+  GITLAB_CLIENT_ID: string;
+  GITLAB_CLIENT_SECRET: string;
+};
+
+const app = new Hono<{ Bindings: Bindings }>();
 
 // OAuth token endpoints
 const ALLOWED_OAUTH_ENDPOINTS = [
@@ -42,7 +49,19 @@ app.use(
   })
 );
 
-// OAuth token proxy
+// Config endpoint - provides client IDs to frontend
+app.get("/config", (c) => {
+  return c.json({
+    github: {
+      clientId: c.env.GITHUB_CLIENT_ID,
+    },
+    gitlab: {
+      clientId: c.env.GITLAB_CLIENT_ID,
+    },
+  });
+});
+
+// OAuth token proxy - handles client_secret injection
 app.post("/oauth", async (c) => {
   const targetUrl = c.req.query("url");
 
@@ -52,6 +71,18 @@ app.post("/oauth", async (c) => {
 
   try {
     const body = await c.req.text();
+    const params = new URLSearchParams(body);
+
+    // Determine provider and inject credentials
+    if (targetUrl.includes("github.com")) {
+      params.set("client_id", c.env.GITHUB_CLIENT_ID);
+      params.set("client_secret", c.env.GITHUB_CLIENT_SECRET);
+    } else if (targetUrl.includes("gitlab.com")) {
+      params.set("client_id", c.env.GITLAB_CLIENT_ID);
+      params.set("client_secret", c.env.GITLAB_CLIENT_SECRET);
+    }
+
+    console.log("🔐 Token exchange for:", targetUrl);
 
     const response = await fetch(targetUrl, {
       method: "POST",
@@ -59,13 +90,21 @@ app.post("/oauth", async (c) => {
         "Content-Type": "application/x-www-form-urlencoded",
         Accept: "application/json",
       },
-      body: body,
+      body: params.toString(),
     });
 
     const data = await response.json();
+
+    if (!response.ok || (data as { error?: string }).error) {
+      console.error("❌ Token exchange failed:", data);
+    } else {
+      console.log("✅ Token exchange successful");
+    }
+
     return c.json(data, response.status as ContentfulStatusCode);
   } catch (err) {
     const error = err as Error;
+    console.error("💥 Proxy error:", error);
     return c.json(
       { error: "Proxy request failed", details: error.message },
       500
@@ -82,7 +121,6 @@ app.get("/apis", async (c) => {
     return c.json({ error: "Missing url parameter" }, 400);
   }
 
-  // Check if URL starts with any allowed API endpoint
   const isAllowed = ALLOWED_API_ENDPOINTS.some((endpoint) =>
     targetUrl.startsWith(endpoint)
   );
@@ -121,8 +159,9 @@ app.get("/", (c) => {
   return c.json({
     status: "ok",
     endpoints: {
-      oauth: "POST /oauth-proxy?url=<encoded-oauth-endpoint>",
-      api: "GET /api-proxy?url=<encoded-api-endpoint>",
+      config: "GET /config",
+      oauth: "POST /oauth?url=<encoded-oauth-endpoint>",
+      api: "GET /apis?url=<encoded-api-endpoint>",
     },
   });
 });
