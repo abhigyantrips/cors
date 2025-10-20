@@ -1,21 +1,40 @@
-```txt
-npm install
-npm run dev
-```
+# CORS Proxy Cloudflare Worker
+
+This is a proxy built on [Hono](https://hono.dev/) as a part of the [GitDigest](https://g.abhi.now) project to handle CORS for GitHub, GitLab, and (potentially) Bitbucket.
+
+## Setup
+
+To test Cloudflare Workers, you need to have [Wrangler](https://developers.cloudflare.com/workers/wrangler/) installed and configured. After that, you can run the following commands to get started.
 
 ```txt
-npm run deploy
+pnpm install
+pnpm dev
 ```
 
-[For generating/synchronizing types based on your Worker configuration run](https://developers.cloudflare.com/workers/wrangler/commands/#types):
+## Deployment
+
+To deploy the Worker to Cloudflare, run:
 
 ```txt
-npm run cf-typegen
+pnpm run deploy
 ```
 
-Pass the `CloudflareBindings` as generics when instantiation `Hono`:
+You'll have to change some of the origin URLs in `src/index.ts` to point to your deployed Worker URL.
+
+## Logging
+
+Logs are non-intrusive and do not use emojis. Messages are prefixed by level:
+
+- INFO | message
+- WARNING | message
+- ERROR | message
+
+Use the helper in `src/logger.ts`:
 
 ```ts
-// src/index.ts
-const app = new Hono<{ Bindings: CloudflareBindings }>()
+import { logger } from "./src/logger";
+
+logger.info("Starting server");
+logger.warn("Rate limit approaching");
+logger.error("Unexpected failure", err);
 ```
